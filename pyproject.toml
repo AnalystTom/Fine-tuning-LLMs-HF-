@@ -1,7 +1,7 @@
 [project]
-name = "property-portal-scraper"
+name = "qwen35-brand-voice-experiments"
 version = "0.1.0"
-description = "Automated scraper for UK property portals"
+description = "Brand voice fine-tuning and llama.cpp evaluation for Qwen3.5"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,8 +12,9 @@ dependencies = [
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.pytest]
+[tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.black]
 line-length = 88
