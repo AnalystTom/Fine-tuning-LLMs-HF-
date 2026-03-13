@@ -1,164 +1,68 @@
-# Qwen3.5 Brand Voice Experiments
+# Qwen3.5 Brand Voice Fine-Tuning (Local + Runpod)
 
-This repo runs a local experiment loop for fine-tuning `Qwen3.5` models on curated public X and LinkedIn posts, exporting baseline and fine-tuned models to GGUF, and comparing both models with `llama.cpp`.
+This repository contains a practical workflow to:
 
-Run 1 is intentionally narrow:
-- optimize for social voice first
-- use public posts only
-- compare baseline vs fine-tuned under identical runtime conditions
-- treat blogs as evaluation probes, not the primary training target
+1. curate public X + LinkedIn posts
+2. build a text-only chat-format SFT dataset
+3. fine-tune `Qwen3.5` with Unsloth
+4. compare baseline vs fine-tuned outputs in `llama.cpp`
+
+The workflow is designed so you can train on Runpod and run evaluation locally.
+
+## Unsloth Documentation (Official)
+
+- Docs home: [https://unsloth.ai/docs](https://unsloth.ai/docs)
+- Installation: [https://unsloth.ai/docs/get-started/install](https://unsloth.ai/docs/get-started/install)
+- Fine-tuning guide: [https://unsloth.ai/docs/get-started/fine-tuning-llms-guide](https://unsloth.ai/docs/get-started/fine-tuning-llms-guide)
+- Notebook catalog: [https://unsloth.ai/docs/get-started/unsloth-notebooks](https://unsloth.ai/docs/get-started/unsloth-notebooks)
+- Qwen guide: [https://unsloth.ai/docs/models/qwen3-how-to-run-and-fine-tune](https://unsloth.ai/docs/models/qwen3-how-to-run-and-fine-tune)
+- Saving to GGUF: [https://unsloth.ai/docs/basics/inference-and-deployment/saving-to-gguf](https://unsloth.ai/docs/basics/inference-and-deployment/saving-to-gguf)
 
 ## Repository Layout
 
-- `scripts/prep_social_exports.py`: ingest LinkedIn and X export zips and write cleaned public-post JSONL.
-- `scripts/export_review_sheet.py`: generate an editable CSV with keep/drop recommendations for run-1 curation.
-- `scripts/apply_review_sheet.py`: apply the edited review sheet and write the curated run-1 corpus.
-- `scripts/build_sft_dataset.py`: label the curated corpus and build run-1 train/eval JSONL plus held-out reconstruction prompts.
-- `scripts/build_eval_suite.py`: build the fixed `20 x 3` evaluation suite.
-- `scripts/run_llamacpp_suite.py`: run prompt JSONL through `llama-server` and write baseline/fine-tuned outputs plus a markdown summary.
-- `scripts/score_memorization.py`: flag generated outputs with long contiguous overlap against the train corpus.
-- `scripts/build_blind_review_sheet.py`: build the blind A/B review sheet and human scoring template.
-- `scripts/score_human_eval.py`: score human ratings and produce a weighted evaluation summary.
-- `scripts/run_run1_posttrain.py`: orchestrate run-1 baseline/fine-tuned evals, perplexity, memorization, blind review, and summary generation after the notebook export.
-- `scripts/render_run1_report.py`: render the run-1 experiment summary and blog-post notes from available artifacts.
-- `notebooks/qwen35_brand_voice_llamacpp_experiment.ipynb`: Colab notebook for `Qwen3.5-9B` QLoRA and GGUF export.
+- `scripts/prep_social_exports.py`: parse LinkedIn/X export zips into cleaned public posts
+- `scripts/export_review_sheet.py`: build CSV for keep/drop curation
+- `scripts/apply_review_sheet.py`: apply curation and produce run-1 corpus
+- `scripts/build_sft_dataset.py`: create train/eval chat-format JSONL
+- `scripts/build_eval_suite.py`: create fixed evaluation prompt suite
+- `scripts/run_llamacpp_suite.py`: run prompts against `llama-server`
+- `scripts/run_run1_posttrain.py`: orchestrate post-train eval flow
+- `scripts/install_heretic.sh`: install/update heretic into `tools/heretic`
+- `notebooks/qwen35_brand_voice_llamacpp_experiment.ipynb`: notebook training/export path
 
-## Run 1 Artifacts
+## Quick Start (Local)
 
-Curated dataset artifacts:
-- `data/processed/public_posts_review.csv`
-- `data/processed/public_posts_run1_curated.jsonl`
-- `data/processed/public_posts_labeled_run1.jsonl`
-- `data/processed/train_run1_qwen35_9b.jsonl`
-- `data/processed/eval_run1_qwen35_9b.jsonl`
-- `data/processed/reconstruction_prompts_run1_qwen35_9b.jsonl`
-- `data/processed/eval_suite_run1_social_20x3.jsonl`
-- `artifacts/eval/run1/eval_text.txt`
+Use this if you want data prep + evaluation on your own machine.
 
-Expected post-training artifacts:
-- `artifacts/gguf/qwen35_9b_baseline_q4_k_m.gguf`
-- `artifacts/gguf/qwen35_9b_brand_voice_q4_k_m.gguf`
-- `artifacts/eval/run1/baseline_qwen35_9b_outputs.jsonl`
-- `artifacts/eval/run1/finetuned_qwen35_9b_outputs.jsonl`
-- `artifacts/eval/run1/blind_review.csv`
-- `artifacts/eval/run1/human_scores.csv`
-- `artifacts/eval/run1/blind_eval_summary.md`
+1. Install Python + llama.cpp:
 
-## Local Data Prep And Curation
+```bash
+brew install llama.cpp
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-Prepare the raw public-post corpus:
+2. Build dataset from export zips:
 
 ```bash
 python3 scripts/prep_social_exports.py \
   --linkedin-zip /absolute/path/to/LinkedIn-export.zip \
   --x-zip /absolute/path/to/X-export.zip
-```
 
-Create the editable review sheet and curated run-1 corpus:
-
-```bash
 python3 scripts/export_review_sheet.py
 python3 scripts/apply_review_sheet.py
-```
-
-Build the run-1 SFT dataset and evaluation suite:
-
-```bash
 python3 scripts/build_sft_dataset.py --labeler-backend heuristic
 python3 scripts/build_eval_suite.py
 ```
 
-Notes:
-- `build_sft_dataset.py` supports `--labeler-backend openai` for an OpenAI-compatible local labeler at `temperature=0`.
-- The checked-in workflow currently uses the heuristic labeler by default because a local labeler endpoint is not guaranteed to be running.
-
-## Fine-Tuning In Colab
-
-Open `notebooks/qwen35_brand_voice_llamacpp_experiment.ipynb` in Colab and mount or upload this repo.
-
-The notebook:
-- loads `unsloth/Qwen3.5-9B`
-- uses 4-bit QLoRA, not 16-bit LoRA
-- trains on `train_run1_qwen35_9b.jsonl`
-- evaluates on `eval_run1_qwen35_9b.jsonl`
-- saves the LoRA adapter
-- saves the merged model
-- exports baseline and fine-tuned GGUFs with `q4_k_m`
-
-## llama.cpp Runtime
-
-Install locally:
-
-```bash
-brew install llama.cpp
-```
-
-Download smoke-test models or comparison models:
+3. Download baseline GGUF:
 
 ```bash
 ./scripts/download_llama_models.sh qwen35-4b
-./scripts/download_llama_models.sh qwen35-9b
 ```
 
-Start a local server with preset models:
-
-```bash
-./scripts/start_llama_server.sh qwen35-4b
-./scripts/start_llama_server.sh qwen35-9b
-./scripts/start_llama_server.sh glm47-flash
-```
-
-Install `heretic` for local safety red-team research:
-
-```bash
-./scripts/install_heretic.sh
-```
-
-### Codex Bridge (Unsloth guide)
-
-Use this flow to make `Qwen3.5-9B` available in `codex` via `llama-server` + OpenAI-compatible `/v1` API.
-
-1. Start `llama-server` on a stable port (`8001` matches Codex examples):
-
-```bash
-./scripts/start_qwen35_9b_codex_server.sh
-```
-
-2. Install a provider entry in `~/.codex/config.toml`:
-
-```bash
-./scripts/setup_codex_qwen35_9b_provider.sh
-```
-
-3. Run Codex using that provider/model:
-
-```bash
-codex -c model_provider=qwen35_local -c model=qwen35-9b --search
-```
-
-Or use the wrapper script:
-
-```bash
-./scripts/run_codex_qwen35_9b.sh --search
-```
-
-If `start_qwen35_9b_codex_server.sh` is already running, you can smoke-test the endpoint directly:
-
-```bash
-python3 scripts/llama9b_agent_smoke_test.py
-```
-
-Run a local file-generation task from the model:
-
-```bash
-python3 scripts/llama9b_file_agent.py --output hello.txt
-```
-
-The file-task script prints `hello.txt` containing model-generated content and is useful as a practical end-to-end local-agent check.
-
-## Baseline vs Fine-Tuned Evaluation
-
-To run only the unfine-tuned baseline in managed `llama.cpp` mode (for first-pass baseline capture):
+4. Run baseline-only evaluation:
 
 ```bash
 python3 scripts/run_llamacpp_suite.py \
@@ -167,7 +71,49 @@ python3 scripts/run_llamacpp_suite.py \
   --baseline-output artifacts/eval/run1/baseline_qwen35_4b_outputs.jsonl
 ```
 
-After the Colab notebook exports the two run-1 GGUF files, run the full evaluation suite locally:
+## Quick Start (Runpod)
+
+Use this for training runs.
+
+1. Create a GPU pod in Runpod (for example `RTX 4090 24GB`), then SSH into it.
+2. Clone repo and set up environment:
+
+```bash
+git clone https://github.com/AnalystTom/Fine-tuning-LLMs-HF-.git
+cd Fine-tuning-LLMs-HF-
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+3. Install Unsloth following the official installation docs for your CUDA/runtime:
+
+- [https://unsloth.ai/docs/get-started/install](https://unsloth.ai/docs/get-started/install)
+
+4. Open and run notebook:
+
+- `notebooks/qwen35_brand_voice_llamacpp_experiment.ipynb`
+
+5. Ensure dataset files exist in `data/processed/`:
+
+- `train_run1_qwen35_9b.jsonl`
+- `eval_run1_qwen35_9b.jsonl`
+
+6. After training, export LoRA / GGUF artifacts and copy needed files back locally for evaluation.
+
+## Data Format
+
+Training data is OpenAI-style chat messages:
+
+```json
+{"messages":[{"role":"system","content":"..."},{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
+```
+
+The training notebook/scripts render rows into a single `text` field via chat template before SFT.
+
+## Baseline vs Fine-Tuned Evaluation
+
+Run full suite after you have both baseline and fine-tuned GGUF files:
 
 ```bash
 python3 scripts/run_llamacpp_suite.py \
@@ -178,7 +124,7 @@ python3 scripts/run_llamacpp_suite.py \
   --finetuned-output artifacts/eval/run1/finetuned_qwen35_4b_outputs.jsonl
 ```
 
-Run held-out reconstruction with the same harness:
+Run held-out reconstruction:
 
 ```bash
 python3 scripts/run_llamacpp_suite.py \
@@ -190,46 +136,35 @@ python3 scripts/run_llamacpp_suite.py \
   --summary-output artifacts/eval/run1/reconstruction_summary.md
 ```
 
-## Perplexity, Memorization, And Human Review
+## Optional: Convert LoRA Adapter to GGUF Adapter
 
-Perplexity:
+This is only needed if you want to apply LoRA adapters directly in `llama.cpp`.
 
-```bash
-llama-perplexity -m artifacts/gguf/qwen35_4b_baseline_q4_k_m.gguf -f artifacts/eval/run1/eval_text.txt > artifacts/eval/run1/perplexity_baseline.txt
-llama-perplexity -m artifacts/gguf/qwen35_4b_brand_voice_q4_k_m.gguf -f artifacts/eval/run1/eval_text.txt > artifacts/eval/run1/perplexity_finetuned.txt
-```
-
-Memorization:
+1. Install optional conversion dependencies:
 
 ```bash
-python3 scripts/score_memorization.py \
-  --train data/processed/train_run1_qwen35_9b.jsonl \
-  --generated artifacts/eval/run1/baseline_qwen35_4b_outputs.jsonl \
-  --generated artifacts/eval/run1/finetuned_qwen35_4b_outputs.jsonl
+pip install -r requirements-gguf.txt
 ```
 
-Blind review packet:
+2. Run converter:
 
 ```bash
-python3 scripts/build_blind_review_sheet.py
+PYTHONPATH=/opt/homebrew/opt/llama.cpp/libexec \
+python3 scripts/convert_lora_to_gguf.py \
+  --base-model-id unsloth/Qwen3.5-4B \
+  --outfile artifacts/lora/qwen35_4b_brand_voice_lora.gguf \
+  /path/to/lora_adapter_dir
 ```
 
-After filling in `artifacts/eval/run1/human_scores.csv`, score the human review:
+## heretic Install
 
 ```bash
-python3 scripts/score_human_eval.py
+./scripts/install_heretic.sh
 ```
-To run the full post-train workflow in one command after the two GGUFs exist:
 
-```bash
-python3 scripts/run_run1_posttrain.py \
-  --baseline-gguf artifacts/gguf/qwen35_4b_baseline_q4_k_m.gguf \
-  --finetuned-gguf artifacts/gguf/qwen35_4b_brand_voice_q4_k_m.gguf
-```
+The repo ignores `tools/heretic/` so vendor code is not committed.
 
 ## Tests
-
-Run:
 
 ```bash
 python3 -m pytest

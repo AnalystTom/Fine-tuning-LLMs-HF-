@@ -29,7 +29,7 @@ Examples:
   scripts/start_llama_server.sh qwen3-4b
   LLAMA_PORT=8081 scripts/start_llama_server.sh qwen3-8b
   scripts/start_llama_server.sh glm47-flash
-  LLAMA_MODEL_PATH=/Users/tom/.lmstudio/models/unsloth/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-Q4_K_S.gguf scripts/start_llama_server.sh local
+  LLAMA_MODEL_PATH=/absolute/path/to/model.gguf scripts/start_llama_server.sh local
 EOF
 }
 
@@ -111,8 +111,9 @@ case "${PRESET}" in
     LOCAL_MODEL_PATH="${MODELS_DIR}/Qwen3-8B-Q4_K_M.gguf"
     ;;
   glm47-flash)
+    HF_REPO="unsloth/GLM-4.7-Flash-GGUF:Q4_K_S"
     DEFAULT_ALIAS="glm47-flash"
-    LOCAL_MODEL_PATH="/Users/tom/.lmstudio/models/unsloth/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-Q4_K_S.gguf"
+    LOCAL_MODEL_PATH="${MODELS_DIR}/GLM-4.7-Flash-Q4_K_S.gguf"
     ;;
   local)
     MODEL_PATH="${LLAMA_MODEL_PATH:-}"
